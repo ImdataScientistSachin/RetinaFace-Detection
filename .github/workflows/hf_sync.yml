@@ -11,25 +11,24 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Clean and Push to Hugging Face
+      - name: Push orphan branch to Hugging Face (no history, no binaries)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # 1. Clean binaries to avoid rejection
-          rm -rf examples/
-          
-          # 2. Configure Git
+          # Configure Git
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
           
-          # 3. Create a temporary 'deploy' branch with no binaries
-          git checkout -b deploy
-          git add .
-          git commit -m "chore: clean deployment"
+          # Copy only the code files we want to deploy (no examples/)
+          mkdir /tmp/hf_deploy
+          cp -r app.py main.py requirements.txt Dockerfile src/ tests/ .github/ /tmp/hf_deploy/
           
-          # 4. Force push the clean branch to the Hugging Face main branch
-          # Using exact lowercase 'Ratina_face'
-          git push --force https://ImdataScientistSachin:$HF_TOKEN@huggingface.co/spaces/ImdataScientistSachin/Ratina_face deploy:main
+          # Create a completely fresh git repo (no history, no binary commits)
+          cd /tmp/hf_deploy
+          git init
+          git add .
+          git commit -m "deploy: fresh deployment"
+          
+          # Force push this clean history to Hugging Face
+          git push --force https://ImdataScientistSachin:$HF_TOKEN@huggingface.co/spaces/ImdataScientistSachin/Ratina_face main

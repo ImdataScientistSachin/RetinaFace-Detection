@@ -16,9 +16,9 @@ jobs:
           fetch-depth: 0
           lfs: true
       - name: Push to hub
-        uses: huggingface/github-action@v1
+        uses: nateraw/huggingface-sync-action@v0.0.5
         with:
-          factory-user: ImdataScientistSachin
-          factory-space: Ratina_Face
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          huggingface-token: ${{ secrets.HF_TOKEN }}
+          github_repo_id: ImdataScientistSachin/Ratina_Face
+          huggingface_repo_id: ImdataScientistSachin/Ratina_Face
+          repo_type: space
+          hf_token: ${{ secrets.HF_TOKEN }}

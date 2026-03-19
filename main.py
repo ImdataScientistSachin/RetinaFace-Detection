@@ -1,8 +1,6 @@
-import sys
 import argparse
 import cv2
 import os
-import json
 from src.detector import FaceDetector
 
 def main():

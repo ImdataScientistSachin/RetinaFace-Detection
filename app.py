@@ -4,7 +4,6 @@ import numpy as np
 import os
 import tempfile
 import pandas as pd
-from PIL import Image
 from src.detector import FaceDetector
 
 # --- Page Configuration ---
@@ -135,10 +134,11 @@ def render_verification_page():
                             "Confidence": f"{ (1 - (res['distance']/res['threshold'])) * 100:.2f}%",
                             "Model": res["model"]
                         })
-                    except Exception as e:
+                    except Exception:
                         results_data.append({"File": test_file.name, "Status": "⚠️ Error", "Distance": "N/A", "Confidence": "N/A", "Model": "N/A"})
                     finally:
-                        if os.path.exists(test_path): os.unlink(test_path)
+                        if os.path.exists(test_path):
+                            os.unlink(test_path)
                     
                     progress_bar.progress((idx + 1) / len(test_files))
 
@@ -155,7 +155,8 @@ def render_verification_page():
                         st.image(test_file, caption=results_data[idx]["Status"], use_container_width=True)
 
             finally:
-                if os.path.exists(ref_path): os.unlink(ref_path)
+                if os.path.exists(ref_path):
+                    os.unlink(ref_path)
                 status_text.empty()
                 st.success("Verification Pipeline Complete.")
 

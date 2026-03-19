@@ -1,3 +1,13 @@
+---
+title: RetinaFace Pro
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # RetinaFace Pro — Face Detection, Landmark Localisation & Identity Verification.
 
 [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)

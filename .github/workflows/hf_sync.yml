@@ -26,7 +26,9 @@ jobs:
           git commit -m "chore: clean project for deployment"
 
       - name: Push to Hub
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          git push --force https://ImdataScientistSachin:$HF_TOKEN@huggingface.co/spaces/ImdataScientistSachin/Ratina_Face main
+        uses: nateraw/huggingface-sync-action@v0.0.5
+        with:
+          github_repo_id: ImdataScientistSachin/Ratina_Face
+          huggingface_repo_id: ImdataScientistSachin/Ratina_face
+          repo_type: space
+          hf_token: ${{ secrets.HF_TOKEN }}

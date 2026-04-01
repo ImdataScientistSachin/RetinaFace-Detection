@@ -1,75 +1,137 @@
-import pytest
-import cv2
+from unittest.mock import MagicMock, patch
+
 import numpy as np
-import os
+import pytest
+
 from src.detector import FaceDetector
 
-# --- Fixtures ---
 
 @pytest.fixture
-def detector():
-    """Provides an initialized FaceDetector instance."""
-    return FaceDetector(threshold=0.9)
+def sample_detection():
+    return {
+        "face_1": {
+            "score": 0.992,
+            "facial_area": [20, 25, 80, 95],
+            "landmarks": {
+                "right_eye": [38.0, 48.0],
+                "left_eye": [62.0, 48.0],
+                "nose": [50.0, 62.0],
+                "mouth_right": [40.0, 78.0],
+                "mouth_left": [60.0, 78.0],
+            },
+        }
+    }
 
-@pytest.fixture
-def sample_image_path():
-    """Provides the path to a sample image if it exists."""
-    # Try multiple common names from the examples folder
-    examples = ["examples/Amber.jpg", "examples/A_Heard.jpg", "examples/celeb_selfee.jpeg"]
-    for img in examples:
-        if os.path.exists(img):
-            return img
-    pytest.skip("No sample images found in examples/ directory for testing.")
 
-# --- Tests ---
-
-def test_detector_initialization(detector):
-    """Verify that the detector class can be instantiated."""
+def test_detector_initialization_defaults():
+    detector = FaceDetector()
     assert detector.threshold == 0.9
+    assert detector.verification_model == "ArcFace"
+    assert detector.use_mlflow is False
 
-def test_detect_faces_path(detector, sample_image_path):
-    """Verify that the detector returns a dictionary of results."""
-    results = detector.detect(sample_image_path)
-    assert isinstance(results, dict)
-    # Since we use images with faces, we expect at least one face
-    assert len(results) >= 1
-    
-    # Check if first face has required fields
-    face_1 = results.get("face_1")
-    assert face_1 is not None
-    assert "facial_area" in face_1
-    assert "landmarks" in face_1
 
-def test_detect_faces_array(detector, sample_image_path):
-    """Verify that the detector can handle numpy arrays."""
-    img = cv2.imread(sample_image_path)
-    results = detector.detect(img)
-    assert isinstance(results, dict)
-    assert len(results) >= 1
+def test_detect_returns_results_and_forwards_threshold(sample_detection):
+    detector = FaceDetector(threshold=0.85)
+    mock_rf = MagicMock()
+    mock_rf.detect_faces.return_value = sample_detection
 
-def test_extract_faces(detector, sample_image_path):
-    """Verify that face extraction returns a list of crops."""
-    faces = detector.extract_faces(sample_image_path, align=True)
-    assert isinstance(faces, list)
-    assert len(faces) >= 1
-    # Each crop should be a numpy array
-    assert isinstance(faces[0], np.ndarray)
+    with patch("src.detector.RetinaFace", mock_rf):
+        results = detector.detect("dummy.jpg")
 
-def test_verify_same_person(detector, sample_image_path):
-    """Verify identity match for the same image."""
-    result = detector.verify(sample_image_path, sample_image_path)
-    assert isinstance(result, dict)
+    mock_rf.detect_faces.assert_called_once_with("dummy.jpg", threshold=0.85)
+    assert "face_1" in results
+    assert results["face_1"]["facial_area"] == [20, 25, 80, 95]
+
+
+def test_detect_accepts_numpy_array(sample_detection):
+    detector = FaceDetector(threshold=0.9)
+    frame = np.zeros((120, 120, 3), dtype=np.uint8)
+    mock_rf = MagicMock()
+    mock_rf.detect_faces.return_value = sample_detection
+
+    with patch("src.detector.RetinaFace", mock_rf):
+        results = detector.detect(frame)
+
+    mock_rf.detect_faces.assert_called_once_with(frame, threshold=0.9)
+    assert len(results) == 1
+
+
+@pytest.mark.parametrize("empty_return", [{}, (), None])
+def test_detect_handles_no_faces(empty_return):
+    detector = FaceDetector()
+    mock_rf = MagicMock()
+    mock_rf.detect_faces.return_value = empty_return
+
+    with patch("src.detector.RetinaFace", mock_rf):
+        results = detector.detect(np.zeros((64, 64, 3), dtype=np.uint8))
+
+    assert results == {}
+
+
+def test_extract_faces_forwards_threshold_and_align():
+    detector = FaceDetector(threshold=0.75)
+    crop = np.zeros((112, 112, 3), dtype=np.uint8)
+    mock_rf = MagicMock()
+    mock_rf.extract_faces.return_value = [crop]
+
+    with patch("src.detector.RetinaFace", mock_rf):
+        faces = detector.extract_faces("face.jpg", align=False)
+
+    mock_rf.extract_faces.assert_called_once_with(
+        img_path="face.jpg", threshold=0.75, align=False
+    )
+    assert len(faces) == 1
+    assert faces[0].shape == (112, 112, 3)
+
+
+def test_verify_returns_deepface_payload():
+    detector = FaceDetector(verification_model="ArcFace")
+    payload = {
+        "verified": True,
+        "distance": 0.21,
+        "threshold": 0.68,
+        "model": "ArcFace",
+    }
+    mock_df = MagicMock()
+    mock_df.verify.return_value = payload
+
+    with patch("src.detector.DeepFace", mock_df):
+        result = detector.verify("a.jpg", "b.jpg")
+
+    mock_df.verify.assert_called_once_with(
+        img1_path="a.jpg",
+        img2_path="b.jpg",
+        model_name="ArcFace",
+        detector_backend="retinaface",
+        enforce_detection=False,
+        align=True,
+    )
     assert result["verified"] is True
-    assert "distance" in result
     assert result["model"] == "ArcFace"
 
-def test_draw_results(detector, sample_image_path):
-    """Verify that visualization helper returns a valid image."""
-    img = cv2.imread(sample_image_path)
-    results = detector.detect(img)
-    annotated = detector.draw_results(img, results)
-    
-    assert isinstance(annotated, np.ndarray)
+
+def test_verify_wraps_backend_errors():
+    detector = FaceDetector()
+    mock_df = MagicMock()
+    mock_df.verify.side_effect = ValueError("corrupt image")
+
+    with patch("src.detector.DeepFace", mock_df):
+        with pytest.raises(RuntimeError, match="DeepFace verification failed"):
+            detector.verify("a.jpg", "b.jpg")
+
+
+def test_draw_results_draws_on_copy_without_mutating_input(sample_detection):
+    img = np.zeros((120, 120, 3), dtype=np.uint8)
+    annotated = FaceDetector.draw_results(img, sample_detection)
+
     assert annotated.shape == img.shape
-    # Check if image data is different (some pixels modified)
+    assert np.array_equal(img, np.zeros((120, 120, 3), dtype=np.uint8))
     assert not np.array_equal(img, annotated)
+
+
+def test_draw_results_handles_empty_results():
+    img = np.zeros((64, 64, 3), dtype=np.uint8)
+    annotated = FaceDetector.draw_results(img, {})
+
+    assert annotated is not img
+    assert np.array_equal(img, annotated)

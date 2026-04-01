@@ -1,123 +1,164 @@
+import logging
+import time
+from typing import Any, Dict, List, Union
+
 import cv2
 import numpy as np
-import time
-import os
-from retinaface import RetinaFace
-from deepface import DeepFace
-from typing import List, Dict, Any, Union
 
-# Optional MLflow integration
+try:
+    from deepface import DeepFace
+except ModuleNotFoundError as exc:  # pragma: no cover
+    if exc.name and exc.name.split(".")[0] != "deepface":
+        raise
+    DeepFace = None
+
+try:
+    from retinaface import RetinaFace
+except ModuleNotFoundError as exc:  # pragma: no cover
+    if exc.name and exc.name.split(".")[0] != "retinaface":
+        raise
+    RetinaFace = None
+
 try:
     import mlflow
+
     MLFLOW_AVAILABLE = True
 except ImportError:
+    mlflow = None
     MLFLOW_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
+
+
 class FaceDetector:
-    """
-    A professional wrapper for detection and verification with built-in 
-    performance tracking and MLflow integration.
-    """
-    
-    def __init__(self, threshold: float = 0.9, verification_model: str = "ArcFace", use_mlflow: bool = False):
+    """Wrapper for RetinaFace detection, alignment, and DeepFace verification."""
+
+    def __init__(
+        self,
+        threshold: float = 0.9,
+        verification_model: str = "ArcFace",
+        use_mlflow: bool = False,
+    ):
         self.threshold = threshold
         self.verification_model = verification_model
         self.use_mlflow = use_mlflow and MLFLOW_AVAILABLE
-        
+
         if self.use_mlflow:
-            # Set internal project experiment
             mlflow.set_experiment("RetinaFace_Inference_Monitoring")
 
+    def _require_retinaface(self):
+        if RetinaFace is None:
+            raise ImportError("retina-face package is required for face detection.")
+        return RetinaFace
+
+    def _require_deepface(self):
+        if DeepFace is None:
+            raise ImportError("deepface package is required for identity verification.")
+        return DeepFace
+
     def verify(self, img1_path: str, img2_path: str) -> Dict[str, Any]:
-        """
-        Verify if two images contain the same person using DeepFace + RetinaFace.
-        """
+        """Verify whether two images contain the same person."""
+        deepface = self._require_deepface()
         start_time = time.time()
         try:
-            result = DeepFace.verify(
+            result = deepface.verify(
                 img1_path=img1_path,
                 img2_path=img2_path,
                 model_name=self.verification_model,
-                detector_backend='retinaface', 
+                detector_backend="retinaface",
                 enforce_detection=False,
-                align=True
+                align=True,
             )
-            
-            latency = (time.time() - start_time) * 1000
-            if self.use_mlflow:
-                with mlflow.start_run(run_name="Verification_Task", nested=True):
-                    mlflow.log_param("model", self.verification_model)
-                    mlflow.log_metric("latency_ms", latency)
-                    mlflow.log_metric("verified", 1 if result.get("verified") else 0)
-                    mlflow.log_metric("distance", result.get("distance", 0))
-            
-            return result
-        except Exception as e:
-            raise Exception(f"DeepFace Verification Error: {str(e)}")
+        except Exception as exc:
+            raise RuntimeError(f"DeepFace verification failed: {exc}") from exc
+
+        latency_ms = (time.time() - start_time) * 1000
+        if self.use_mlflow:
+            self._log_verification_metrics(result, latency_ms)
+
+        return result
 
     def detect(self, image_input: Union[str, np.ndarray]) -> Dict[str, Any]:
-        """
-        Detect faces in an image and track performance metrics.
-        """
+        """Detect faces and 5-point landmarks in an image path or BGR array."""
+        retinaface = self._require_retinaface()
         start_time = time.time()
-        
-        # RetinaFace.detect_faces handles both string paths and numpy arrays
-        results = RetinaFace.detect_faces(image_input, threshold=self.threshold)
-        
-        latency = (time.time() - start_time) * 1000
-        
-        if not results:
+        results = retinaface.detect_faces(image_input, threshold=self.threshold)
+        latency_ms = (time.time() - start_time) * 1000
+
+        if not results or not isinstance(results, dict):
             if self.use_mlflow:
-                self._log_detection_metrics(0, latency, 0)
+                self._log_detection_metrics(0, latency_ms, 0.0)
             return {}
-            
+
         num_faces = len(results)
-        avg_confidence = np.mean([data.get("score", 0) for data in results.values()])
-        
+        avg_confidence = float(
+            np.mean([data.get("score", 0.0) for data in results.values()])
+        )
         if self.use_mlflow:
-            self._log_detection_metrics(num_faces, latency, avg_confidence)
-            
+            self._log_detection_metrics(num_faces, latency_ms, avg_confidence)
+
         return results
 
-    def _log_detection_metrics(self, count: int, latency: float, confidence: float):
-        """Helper to log inference metrics to MLflow."""
+    def extract_faces(
+        self, image_input: Union[str, np.ndarray], align: bool = True
+    ) -> List[np.ndarray]:
+        """Extract and optionally align detected face crops."""
+        retinaface = self._require_retinaface()
+        return retinaface.extract_faces(
+            img_path=image_input, threshold=self.threshold, align=align
+        )
+
+    def _log_detection_metrics(
+        self, count: int, latency_ms: float, confidence: float
+    ) -> None:
         try:
             with mlflow.start_run(run_name="Detection_Inference", nested=True):
                 mlflow.log_param("threshold", self.threshold)
                 mlflow.log_metric("face_count", count)
-                mlflow.log_metric("latency_ms", latency)
+                mlflow.log_metric("latency_ms", latency_ms)
                 mlflow.log_metric("avg_confidence", confidence)
-        except Exception as e:
-            print(f"MLflow Logging Error: {e}")
+        except Exception as exc:
+            logger.warning("MLflow detection logging failed: %s", exc)
 
-    def extract_faces(self, image_path: str, align: bool = True) -> List[np.ndarray]:
-        """
-        Extract and optionally align faces from an image path.
-        """
-        faces = RetinaFace.extract_faces(img_path=image_path, align=align)
-        return faces
+    def _log_verification_metrics(
+        self, result: Dict[str, Any], latency_ms: float
+    ) -> None:
+        try:
+            with mlflow.start_run(run_name="Verification_Task", nested=True):
+                mlflow.log_param("model", self.verification_model)
+                mlflow.log_metric("latency_ms", latency_ms)
+                mlflow.log_metric("verified", 1 if result.get("verified") else 0)
+                mlflow.log_metric("distance", result.get("distance", 0.0))
+        except Exception as exc:
+            logger.warning("MLflow verification logging failed: %s", exc)
 
     @staticmethod
     def draw_results(image: np.ndarray, results: Dict[str, Any]) -> np.ndarray:
-        """
-        Draws bounding boxes, landmarks, and text labels (Face ID, Score) on the image.
-        """
+        """Draw bounding boxes, scores, and 5-point landmarks on a copy of image."""
         output_img = image.copy()
-        
+
         for face_id, data in results.items():
             area = data.get("facial_area", [])
             score = data.get("score", 0.0)
-            
+
             if len(area) == 4:
-                cv2.rectangle(output_img, (area[0], area[1]), (area[2], area[3]), (0, 255, 0), 2)
+                x1, y1, x2, y2 = (int(v) for v in area)
+                cv2.rectangle(output_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 label = f"{face_id} ({score:.2f})"
                 cv2.putText(
-                    output_img, label, (area[0], area[1] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2
+                    output_img,
+                    label,
+                    (x1, max(y1 - 10, 12)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    2,
                 )
-            
+
             landmarks = data.get("landmarks", {})
-            for point_name, coords in landmarks.items():
-                cv2.circle(output_img, (int(coords[0]), int(coords[1])), 2, (0, 0, 255), -1)
-                
+            for coords in landmarks.values():
+                cv2.circle(
+                    output_img, (int(coords[0]), int(coords[1])), 2, (0, 0, 255), -1
+                )
+
         return output_img

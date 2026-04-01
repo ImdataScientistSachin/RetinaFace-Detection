@@ -3,10 +3,8 @@ deepface==0.0.95
 tensorflow>=2.13.0
 opencv-python-headless
 streamlit
-matplotlib
+pandas
 numpy<2.0.0
 Pillow
 tf-keras
 mlflow
-pytest
-pytest-cov

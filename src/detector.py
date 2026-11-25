@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Dict, List, Union
+from typing import Any
 
 import cv2
 import numpy as np
@@ -56,7 +56,7 @@ class FaceDetector:
             raise ImportError("deepface package is required for identity verification.")
         return DeepFace
 
-    def verify(self, img1_path: str, img2_path: str) -> Dict[str, Any]:
+    def verify(self, img1_path: str, img2_path: str) -> dict[str, Any]:
         """Verify whether two images contain the same person."""
         deepface = self._require_deepface()
         start_time = time.time()
@@ -78,7 +78,7 @@ class FaceDetector:
 
         return result
 
-    def detect(self, image_input: Union[str, np.ndarray]) -> Dict[str, Any]:
+    def detect(self, image_input: str | np.ndarray) -> dict[str, Any]:
         """Detect faces and 5-point landmarks in an image path or BGR array."""
         retinaface = self._require_retinaface()
         start_time = time.time()
@@ -100,8 +100,8 @@ class FaceDetector:
         return results
 
     def extract_faces(
-        self, image_input: Union[str, np.ndarray], align: bool = True
-    ) -> List[np.ndarray]:
+        self, image_input: str | np.ndarray, align: bool = True
+    ) -> list[np.ndarray]:
         """Extract and optionally align detected face crops."""
         retinaface = self._require_retinaface()
         return retinaface.extract_faces(
@@ -121,7 +121,7 @@ class FaceDetector:
             logger.warning("MLflow detection logging failed: %s", exc)
 
     def _log_verification_metrics(
-        self, result: Dict[str, Any], latency_ms: float
+        self, result: dict[str, Any], latency_ms: float
     ) -> None:
         try:
             with mlflow.start_run(run_name="Verification_Task", nested=True):
@@ -133,7 +133,7 @@ class FaceDetector:
             logger.warning("MLflow verification logging failed: %s", exc)
 
     @staticmethod
-    def draw_results(image: np.ndarray, results: Dict[str, Any]) -> np.ndarray:
+    def draw_results(image: np.ndarray, results: dict[str, Any]) -> np.ndarray:
         """Draw bounding boxes, scores, and 5-point landmarks on a copy of image."""
         output_img = image.copy()
 

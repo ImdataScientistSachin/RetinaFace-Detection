@@ -36,7 +36,6 @@ RetinaFace-Detection/
 
 ### Local Setup
 
-### Option 1: Local Python Setup
 ```bash
 git clone https://github.com/ImdataScientistSachin/RetinaFace-Detection.git
 cd RetinaFace-Detection

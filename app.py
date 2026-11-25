@@ -44,7 +44,8 @@ def main():
 def render_detection_page(detector: FaceDetector):
     st.title("Multi-Face Detection & Extraction")
     st.info(
-        "Upload one or more images to detect faces, localize landmarks, and extract aligned portraits."
+        "Upload one or more images to detect faces, localize landmarks, "
+        "and extract aligned portraits."
     )
 
     uploaded_files = st.file_uploader(
@@ -93,14 +94,17 @@ def render_detection_page(detector: FaceDetector):
                     for idx, face in enumerate(faces):
                         with cols[idx % 6]:
                             st.image(
-                                face, caption=f"Face {idx + 1}", use_container_width=True
+                                face,
+                                caption=f"Face {idx + 1}",
+                                use_container_width=True,
                             )
 
 
 def render_verification_page(detector: FaceDetector):
     st.title("Identity Verification (1-to-Many)")
     st.info(
-        "Compare a reference image against one or more test images using ArcFace embeddings."
+        "Compare a reference image against one or more test images "
+        "using ArcFace embeddings."
     )
 
     col_ref, col_test = st.columns(2)
@@ -207,7 +211,7 @@ def render_info_page():
     ### Architecture
     - **Core Wrapper:** `src/detector.py` (`FaceDetector`)
     - **CLI:** `main.py` (`detect` and `verify` subcommands)
-    - **Deployment:** Containerized with `Dockerfile` for Hugging Face Spaces (port 7860)
+    - **Deployment:** Dockerized for Hugging Face Spaces (port 7860)
     """
     )
 

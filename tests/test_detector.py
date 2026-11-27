@@ -115,9 +115,11 @@ def test_verify_wraps_backend_errors():
     mock_df = MagicMock()
     mock_df.verify.side_effect = ValueError("corrupt image")
 
-    with patch("src.detector.DeepFace", mock_df):
-        with pytest.raises(RuntimeError, match="DeepFace verification failed"):
-            detector.verify("a.jpg", "b.jpg")
+    with (
+        patch("src.detector.DeepFace", mock_df),
+        pytest.raises(RuntimeError, match="DeepFace verification failed"),
+    ):
+        detector.verify("a.jpg", "b.jpg")
 
 
 def test_draw_results_draws_on_copy_without_mutating_input(sample_detection):
